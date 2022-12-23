@@ -13,7 +13,7 @@ blu.off()
 epoch = 1671790536
 while True:
     epoch = epoch + 1
-    print("Toggle at " + str(utime.gmtime(epoch)))
+    print("[Pico-W-Go] Toggle at " + str(utime.gmtime(epoch)))
     led.toggle()
     red.off()
     blu.toggle()
