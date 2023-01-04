@@ -1,6 +1,6 @@
 # Raspberry Pi Pico 
 # Uploaded with Visual Studio Code via Pico-W-Go 23 Dec 2022 Friday
-# 19:26:00
+# 19:54:00 
 from machine import Pin, UART, I2C, SPI, WDT
 from ssd1306 import SSD1306_I2C
 from oled import Write, GFX
@@ -82,10 +82,10 @@ def wheel(pos):
  
  
 def rainbow_cycle(wait):
-    for j in range(125):
+    for j in range(64):
         for i in range(NUM_LEDS):
-            rc_index = (i * 128 // NUM_LEDS) + j
-            pixels_set(i, wheel(rc_index & 125))
+            rc_index = (i * 64 // NUM_LEDS) + j
+            pixels_set(i, wheel(rc_index & 64))
         pixels_show()
         time.sleep(wait)
  
@@ -163,9 +163,7 @@ def animate_text_4ch_green(s):
     for i in range(len(s)):
         prox_disp.text(s[i],i*8,1,1)
         prox_disp.show()
-        time.sleep(0.25)  
-
-
+        time.sleep(0.05)  
 
 MAX_CHAR_DISPLAYABLE  = 21
 none_found = False
@@ -312,7 +310,7 @@ def scroll_text_bounce(s,delay):
         prox_disp.fill(0)        
         utime.sleep_ms(delay)
         
-def scroll_text_one_way(s,delay):
+def scroll_one_way_bottom(s,delay):
     s = s + "    " # add empty spaces before and after str
     array = []
     prox_disp.fill(0)
@@ -326,7 +324,7 @@ def scroll_text_one_way(s,delay):
         prox_disp.fill(0)        
     array.clear()
     
-def scroll_text_one_way_red(s,delay):
+def scroll_one_way_top(s,delay):
     s = s + "    " # add empty spaces before and after str
     array = []
     velo_disp.fill(0)
@@ -515,9 +513,9 @@ def async_getgps(gpsModule):
                     if elapse <= 1:
                         animate_text_4ch_red('STOP')
                     if(elapse >=15 and elapse % 15 == 0):
-                        scroll_text_one_way_red('Sat: '+satellites,100)   
+                        scroll_one_way_top('SatNum: '+satellites,100)   
                     if(elapse >=30 and elapse % 30 == 0):
-                        scroll_text_one_way_red('GPS Time: '+GPStime,100)                        
+                        scroll_one_way_top('GPS Time: '+GPStime,100)                        
                 else:
                     car_stopping = False
                     disp_speed_dot4d(int(speed_7seg))
@@ -576,7 +574,7 @@ def async_getgps(gpsModule):
         rainbow_cycle(0)
         if not missing_oled:
 #             animate_text_4ch_red('!FIX')
-            scroll_text_one_way_red("NO FIX",50)
+            scroll_one_way_top("NO SATELLITE FIX",50)
             oled.fill(0)
             retry += 1
             oled.text("No GPS found", 0, 0)
@@ -828,10 +826,10 @@ def async_get_distance_thread():
         else:
             if(avg_dist > 500):
 #                 animate_text_4ch_red('SAFE')
-                scroll_text_one_way('SAFE',scroll_delay)
+                scroll_one_way_bottom('SAFE',scroll_delay)
             elif(avg_dist > 450 and avg_dist < 500):
 #                 animate_text_4ch_red('CARE')
-                scroll_text_one_way('CLOSE',scroll_delay)
+                scroll_one_way_bottom('CLOSE',scroll_delay)
             else:
                 disp_distance_dot4d(int(avg_dist))
         utime.sleep_ms(100)
@@ -884,7 +882,7 @@ def getLidarData(UART0):
                     disp_distance_dot4d(int(distance))
             prox_disp = max7219.Matrix8x8(spi0, cs, 4) # to refresh SPI inside thread
     if utime.time() > lidar_timeout:
-        scroll_text_one_way('LiDAR DISCONNECTED',scroll_delay)
+        scroll_one_way_bottom('LiDAR DISCONNECTED',scroll_delay)
 
 
 def set_samp_rate(samp_rate=frame_rate):
@@ -919,7 +917,7 @@ def get_version(UART0):
 #                 print(hex_stream) # uncomment this to see the HEX data
 #                 print("{}".format(bin_ascii.decode('utf-8')))
                 version = bin_ascii[0:].decode('utf-8')
-                scroll_text_one_way(version,scroll_delay)
+                scroll_one_way_bottom(version,scroll_delay)
 
                 lst = []
                 for c in version:
@@ -944,7 +942,7 @@ def lidar_thread():
     global lidar_timeout
     print("starting lidar thread")
     try:
-        scroll_text_one_way('GET LiDAR',scroll_delay)
+        scroll_one_way_bottom('GET LiDAR',scroll_delay)
         get_version(lidar)
     except:
         # to avoid error when no TFmini-Plus connected while debugging
@@ -966,7 +964,7 @@ def main():
 #     _thread.start_new_thread(async_get_distance_thread, ())
     if not missing_oled:
         init_oled()
-    animate_text_4ch_red('AXIA')
+    animate_text_4ch_red('PICO')
     utime.sleep(1)
     animate_text_4ch_green('Code')
     if FAULTY_FLASH_MEM:
