@@ -1,5 +1,6 @@
 # Raspberry Pi Pico 
 # Uploaded with Visual Studio Code via Pico-W-Go 23 Dec 2022 Friday
+# Speed Gauge Addition 3 Feb 2023 Friday
 # 19:54:00 
 from machine import Pin, UART, I2C, SPI, WDT
 from ssd1306 import SSD1306_I2C
@@ -195,6 +196,32 @@ blu = Pin(21, Pin.OUT)
 
 max_hit = False
 posR = -3
+
+speed_32 = 0
+prev_speed = 0
+speed_increase = False
+
+def map_val(x, in_min, in_max, out_min, out_max):
+  return int((x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min)
+
+
+def speed_gauge(speed,delay):
+    global max_hit, posR, speed_32, speed_increase, prev_speed
+
+    if prev_speed < speed:
+        speed_increase = True
+        prox_disp.text('|',speed_32,0,True) # increase from left | True = display pattern with LED=1
+    elif prev_speed > speed:
+        speed_increase = False
+        prox_disp.text('|',speed_32,0,False)# decrease from right | False = display pattern with LED=0
+    else:
+        speed_increase = "Constant"
+        
+    speed_32 = map_val(speed,0,100,-3,28)
+    prev_speed = speed 
+    prox_disp.show()
+
+    utime.sleep_ms(delay)
 
 def scroll_dot(delay):
     global max_hit, posR
@@ -496,6 +523,7 @@ def async_getgps(gpsModule):
                 try:
                     speed_kmh = float(speed_gpvtg)
                     speed_7seg = float(parts[7])
+                    speed_gauge(int(speed_kmh),1)
                 except ValueError:
                     speed_7seg = -1
                     speed_kmh = -1
@@ -509,7 +537,8 @@ def async_getgps(gpsModule):
                     sec = elapse % 3600
                     minute = sec // 60
                     sec %= 60
-                    disp_stop_elapse(int(minute),int(sec))
+                    
+#                     disp_stop_elapse(int(minute),int(sec))
                     if elapse <= 1:
                         animate_text_4ch_red('STOP')
                     if(elapse >=15 and elapse % 15 == 0):
@@ -574,7 +603,7 @@ def async_getgps(gpsModule):
         rainbow_cycle(0)
         if not missing_oled:
 #             animate_text_4ch_red('!FIX')
-            scroll_one_way_top("NO SATELLITE FIX",50)
+            scroll_one_way_top("NO GPS FIX",50)
             oled.fill(0)
             retry += 1
             oled.text("No GPS found", 0, 0)
@@ -882,7 +911,8 @@ def getLidarData(UART0):
                     disp_distance_dot4d(int(distance))
             prox_disp = max7219.Matrix8x8(spi0, cs, 4) # to refresh SPI inside thread
     if utime.time() > lidar_timeout:
-        scroll_one_way_bottom('LiDAR DISCONNECTED',scroll_delay)
+        pass
+#         scroll_one_way_bottom('LiDAR DISCONNECTED',scroll_delay)
 
 
 def set_samp_rate(samp_rate=frame_rate):
@@ -931,6 +961,7 @@ def get_version(UART0):
                 lidar.write(bytes(info_packet))
     print("Failed to retrieve version")
     animate_text_4ch_green('NULL')
+    prox_disp.fill(0)
                 
 def save_settings():
     print("\nSaving setting...")
@@ -1029,6 +1060,7 @@ except Exception as e:
         oled.text('len:'+str(len(msg)), 0, 20, True)
         oled.text(msg, 0, 30, True)
         oled.show()
+
 
 
 
