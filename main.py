@@ -2,6 +2,8 @@
 # Uploaded with Visual Studio Code via Pico-W-Go 23 Dec 2022 Friday
 # Speed Gauge Addition 3 Feb 2023 Friday
 # 19:54:00 
+# added GPS clock blink when stopping 20 Feb 2023
+
 from machine import Pin, UART, I2C, SPI, WDT
 from ssd1306 import SSD1306_I2C
 from oled import Write, GFX
@@ -185,6 +187,8 @@ dist = 0 # global value for LIDAR
 minute = 0
 sec = 0
 detected = False # LiDAR animation 31 Oct
+gpsTime_nocolon = "None" # added 20 Feb 2023
+
 
 for i in range(read_max):
     list.append(0)
@@ -210,14 +214,14 @@ def speed_gauge(speed,delay):
 
     if prev_speed < speed:
         speed_increase = True
-        prox_disp.text('|',speed_32,0,True) # increase from left | True = display pattern with LED=1
+        prox_disp.text('>',speed_32,0,True) # increase from left | True = display pattern with LED=1
     elif prev_speed > speed:
         speed_increase = False
-        prox_disp.text('|',speed_32,0,False)# decrease from right | False = display pattern with LED=0
+        prox_disp.text('>',speed_32,0,False)# decrease from right | False = display pattern with LED=0
     else:
         speed_increase = "Constant"
         
-    speed_32 = map_val(speed,0,100,-3,28)
+    speed_32 = map_val(speed,0,100,-3,28) # map from 0kmh-100kmh to -3 to 28 column on matrix
     prev_speed = speed 
     prox_disp.show()
 
@@ -284,7 +288,12 @@ def disp_distance_dot4d(d):
     prox_disp.text('m',24,0,1)
     prox_disp.show()
 
-def static_text_prox(s):
+def static_text_prox_top(s):
+    velo_disp.fill(0)
+    velo_disp.text(s,0,0,1)
+    velo_disp.show()
+    
+def static_text_prox_bottom(s):
     prox_disp.fill(0)
     prox_disp.text(s,0,0,1)
     prox_disp.show()  
@@ -405,7 +414,7 @@ play_rgb()
 
 osd_delay 	= 10
 buff 		= bytearray(255)
-TIMEOUT_SEC = 5
+TIMEOUT_SEC = 2
 TIMEOUT 	= False
 FIX_STATUS 	= False
 
@@ -489,6 +498,8 @@ def async_getgps(gpsModule):
     global FIX_STATUS, TIMEOUT, latitude, longitude, satellites, GPStime, speed_knot 
     global retry, speed_kmh, speed_7seg, speed_gpvtg, valueError, none_found, nmea_count
     global stop_time, car_stopping, minute, sec # added 14 Oct MKE2 & 28 Oct (minute)
+    global gpsTime_nocolon # added 20 Feb 2023
+    
 
     timeout = time.time() + TIMEOUT_SEC
     if(new_baud == 9600):
@@ -513,9 +524,12 @@ def async_getgps(gpsModule):
                     if hour >= 24:
                         hour = hour - 24
                         GPStime = '0'+str(hour) + ":" + parts[1][2:4] + ":" + parts[1][4:6]
+                        gpsTime_nocolon = '0'+str(hour) + parts[1][2:4]
                     else:
                         GPStime = str(hour) + ":" + parts[1][2:4] + ":" + parts[1][4:6]
-         
+                        gpsTime_nocolon = str(hour) + parts[1][2:4]
+                    
+                    
         if((parts[0] == "b'$GPVTG" and len(parts) == 10) or (parts[0] == "b'$GNVTG" and len(parts) == 10)):
             if(parts[5] and parts[7]):
                 speed_knot = parts[5]
@@ -528,6 +542,11 @@ def async_getgps(gpsModule):
                     speed_7seg = -1
                     speed_kmh = -1
                 if(int(speed_7seg) == 0):
+                    if(time.time() % 2 == 0):
+                        static_text_prox_bottom(gpsTime_nocolon)
+                    else:
+                        static_text_prox_bottom("    ")
+                        
                     if not car_stopping:
                         stop_time = utime.time()
                         car_stopping = True
@@ -538,13 +557,20 @@ def async_getgps(gpsModule):
                     minute = sec // 60
                     sec %= 60
                     
-#                     disp_stop_elapse(int(minute),int(sec))
                     if elapse <= 1:
                         animate_text_4ch_red('STOP')
-                    if(elapse >=15 and elapse % 15 == 0):
-                        scroll_one_way_top('SatNum: '+satellites,100)   
-                    if(elapse >=30 and elapse % 30 == 0):
-                        scroll_one_way_top('GPS Time: '+GPStime,100)                        
+                    else:
+                        disp_stop_elapse(int(minute),int(sec))
+
+#                         if(elapse % 2 == 0):
+#                             static_text_prox_top('   ')
+#                         else:
+#                             static_text_prox_top('STOP')
+                
+#                     if(elapse >=15 and elapse % 15 == 0):
+#                         scroll_one_way_top('SatNum: '+satellites,100)   
+#                     if(elapse >=30 and elapse % 30 == 0):
+#                         scroll_one_way_top('GPS Time: '+GPStime,100)                        
                 else:
                     car_stopping = False
                     disp_speed_dot4d(int(speed_7seg))
@@ -595,23 +621,33 @@ def async_getgps(gpsModule):
             oled.text("GMT: "+GPStime, 0, 30)
             write20.text("VK: "+str(int(speed_kmh)) + "km/h", 0, 40)
             oled.show()
+     
         FIX_STATUS = False
         none_found = False
 
-    if(TIMEOUT == True):
+    if(TIMEOUT == True): # timeout reached due to no fix
         red_on()
-        rainbow_cycle(0)
+        pixels_fill(RED)
         if not missing_oled:
 #             animate_text_4ch_red('!FIX')
-            scroll_one_way_top("NO GPS FIX",50)
+            scroll_one_way_top("NO GPS FIX : "+str(retry),100)
             oled.fill(0)
             retry += 1
+            if(retry >= 5):
+                scroll_one_way_top("FAILED TO GET GPS FIX ",100)
+                scroll_one_way_top("Restarting...",100)
+                machine.reset() # added logic 20 Feb 2023
+                
             oled.text("No GPS found", 0, 0)
             oled.text("Time:"+ GPStime, 0, 10)
             oled.text("ValueErr:"+str(valueError), 0, 20)
             write20.text("No Fix:" + str(retry), 0, 30)
             oled.text("NMEA:" + str(nmea_count/60), 0, 50)
             oled.show()
+        if(time.time() % 2 == 0):
+            static_text_prox_bottom(gpsTime_nocolon)
+        else:
+            static_text_prox_bottom("    ")
         TIMEOUT = False
 
 def set_update_1hz():
@@ -995,9 +1031,12 @@ def main():
 #     _thread.start_new_thread(async_get_distance_thread, ())
     if not missing_oled:
         init_oled()
-    animate_text_4ch_red('PICO')
-    utime.sleep(1)
-    animate_text_4ch_green('Code')
+    scroll_one_way_top("HELLO",100)
+    utime.sleep(0.5)
+    animate_text_4ch_red('INIT')
+
+    animate_text_4ch_green('AXIA')
+    prox_disp.fill(0)
     if FAULTY_FLASH_MEM:
         prev_baud = load_baudrate()
         change_baud_9600(prev_baud)
@@ -1011,7 +1050,7 @@ def main():
         change_baud_115200(prev_baud)
         set_update_10hz()
         save_config()
-    _thread.start_new_thread(lidar_thread, ()) # relocated here 5 Oct 2022 | Wednesday
+#     _thread.start_new_thread(lidar_thread, ()) # relocated here 5 Oct 2022 | Wednesday
     while 1:
         async_getgps(gpsModule)
 
