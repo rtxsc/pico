@@ -2,8 +2,6 @@
 # Uploaded with Visual Studio Code via Pico-W-Go 23 Dec 2022 Friday
 # Speed Gauge Addition 3 Feb 2023 Friday
 # 19:54:00 
-# added GPS clock blink when stopping 20 Feb 2023
-
 from machine import Pin, UART, I2C, SPI, WDT
 from ssd1306 import SSD1306_I2C
 from oled import Write, GFX
@@ -188,7 +186,7 @@ minute = 0
 sec = 0
 detected = False # LiDAR animation 31 Oct
 gpsTime_nocolon = "None" # added 20 Feb 2023
-
+prox_cleared = False
 
 for i in range(read_max):
     list.append(0)
@@ -498,7 +496,7 @@ def async_getgps(gpsModule):
     global FIX_STATUS, TIMEOUT, latitude, longitude, satellites, GPStime, speed_knot 
     global retry, speed_kmh, speed_7seg, speed_gpvtg, valueError, none_found, nmea_count
     global stop_time, car_stopping, minute, sec # added 14 Oct MKE2 & 28 Oct (minute)
-    global gpsTime_nocolon # added 20 Feb 2023
+    global gpsTime_nocolon, prox_cleared # added 20 Feb 2023
     
 
     timeout = time.time() + TIMEOUT_SEC
@@ -550,6 +548,7 @@ def async_getgps(gpsModule):
                     if not car_stopping:
                         stop_time = utime.time()
                         car_stopping = True
+                        prox_cleared = False
                     elapse  = utime.time() - stop_time
                     elapse = elapse % (24 * 3600)
                     hour = elapse // 3600
@@ -573,6 +572,10 @@ def async_getgps(gpsModule):
 #                         scroll_one_way_top('GPS Time: '+GPStime,100)                        
                 else:
                     car_stopping = False
+                    if not prox_cleared:
+                        prox_disp.fill(0)
+                        prox_disp.show()
+                        prox_cleared = True
                     disp_speed_dot4d(int(speed_7seg))
                 break
      
