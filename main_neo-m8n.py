@@ -1,10 +1,12 @@
 # Raspberry Pi Pico 
 # Uploaded with Visual Studio Code via Pico-W-Go 23 Dec 2022 Friday
 # Speed Gauge Addition 3 Feb 2023 Friday
-# 19:54:00 
+# 19:54:00
+# edited for Airplane Speed Testing 27 Feb 2023
+
 from machine import Pin, UART, I2C, SPI, WDT
-from ssd1306 import SSD1306_I2C
-from oled import Write, GFX
+# from ssd1306 import SSD1306_I2C # deleted 27 Feb 2023
+from oled import Write, GFX, SSD1306_I2C
 from oled.fonts import ubuntu_mono_15, ubuntu_mono_20
 import tm1637
 import utime, time
@@ -15,6 +17,11 @@ import _thread
 
 ##########################################################################
 import rp2, array
+
+tm1637_connected = False
+max7219_connected = False
+hcsr04_connected = False
+lidar_connected = False
 
 NUM_LEDS = 12
 PIN_NUM = 6
@@ -100,7 +107,6 @@ PURPLE = (180, 0, 255)
 WHITE = (255, 255, 255)
 COLORS = (RED, GREEN, BLUE)
 
-print("fills")
 for color in COLORS:       
     pixels_fill(color)
     pixels_show()
@@ -112,40 +118,43 @@ for color in COLORS:
 ##########################################################################
 
 
-reset = Pin(26, Pin.OUT)
-reset.value(1)
+
 FAULTY_FLASH_MEM = True # True on Neo-M8N | Maybe False on V.KEL and Neo-M6N
 PERFORM_DEBUG = False
 
-spi0 = SPI(0,sck=Pin(2),mosi=Pin(3)) # SCK = CLK || TX = DIN(mosi) || cs = CSn 
-cs = Pin(9, Pin.OUT)
+if max7219_connected:
+    spi0 = SPI(0,sck=Pin(2),mosi=Pin(3)) # SCK = CLK || TX = DIN(mosi) || cs = CSn 
+    cs = Pin(9, Pin.OUT)
 
-spi1 = SPI(1,sck=Pin(10),mosi=Pin(11)) # SCK = CLK || TX = DIN(mosi) || cs = CSn 
-cs2 = Pin(13, Pin.OUT)
+    spi1 = SPI(1,sck=Pin(10),mosi=Pin(11)) # SCK = CLK || TX = DIN(mosi) || cs = CSn 
+    cs2 = Pin(13, Pin.OUT)
 
+    velo_disp 	= max7219.Matrix8x8(spi1, cs2, 4)
+    prox_disp 	= max7219.Matrix8x8(spi0, cs, 4)
+    velo_disp.brightness(15)
+    prox_disp.brightness(15)
+    velo_disp.fill(0)
+    prox_disp.fill(0)
+    velo_disp.show()
+    prox_disp.show()
 
-velo_disp 	= max7219.Matrix8x8(spi1, cs2, 4)
-prox_disp 	= max7219.Matrix8x8(spi0, cs, 4)
-velo_disp.brightness(15)
-prox_disp.brightness(15)
-velo_disp.fill(0)
-prox_disp.fill(0)
-velo_disp.show()
-prox_disp.show()
+if hcsr04_connected:
+    sensor = HCSR04(trigger_pin=26, echo_pin=27, echo_timeout_us=1000000)
+    
+if lidar_connected:
+    lidar = UART(0, baudrate=115200, tx=Pin(16), rx=Pin(17))    #Define receiving interface of Lidar 
+    print(lidar)
+    utime.sleep_ms(100)
 
-sensor = HCSR04(trigger_pin=26, echo_pin=27, echo_timeout_us=1000000)
-lidar = UART(0, baudrate=115200, tx=Pin(16), rx=Pin(17))    #Define receiving interface of Lidar 
-print(lidar)
-utime.sleep_ms(100)
+if tm1637_connected:
+    tm = tm1637.TM1637(clk=Pin(15), dio=Pin(14))
+    # all LEDS on "88:88"
+    tm.write([127, 255, 127, 127])
+    time.sleep(0.5)
 
-tm = tm1637.TM1637(clk=Pin(15), dio=Pin(14))
-# all LEDS on "88:88"
-tm.write([127, 255, 127, 127])
-time.sleep(0.5)
-
-# all LEDS off
-tm.write([0, 0, 0, 0])
-time.sleep(0.5)
+    # all LEDS off
+    tm.write([0, 0, 0, 0])
+    time.sleep(0.5)
 
 baud = 9600 # default baudrate by ublox
 gpsModule = UART(1, baudrate=baud, tx=Pin(4), rx=Pin(5))
@@ -419,10 +428,10 @@ FIX_STATUS 	= False
 latitude 	= "-1"
 longitude 	= "-1"
 satellites 	= "-1"
-GPStime 	= "-1"
-speed_gpvtg = "-1"
 altitude_m  = "-1"
 altitude_ft = "-1"
+GPStime 	= "-1"
+speed_gpvtg = "-1"
 speed_7seg 	= 0
 speed_kmh 	= 0
 speed_knot	= 0
@@ -435,23 +444,24 @@ try:
     write15 = Write(oled, ubuntu_mono_15)
     write20 = Write(oled, ubuntu_mono_20)
 except OSError:
-    animate_text_4ch_red('i2c')
-    animate_text_4ch_green('err')
+    if max7219_connected:
+        animate_text_4ch_red('i2c')
+        animate_text_4ch_green('err')
     missing_oled = True
     
 
 def init_oled():
     oled.fill(0)
-    oled.fill_rect(0, 0, 32, 32, 1)
-    oled.fill_rect(2, 2, 28, 28, 0)
-    oled.vline(9, 8, 22, 1)
-    oled.vline(16, 2, 22, 1)
-    oled.vline(23, 8, 22, 1)
-    oled.fill_rect(26, 24, 2, 4, 1)
+#     oled.fill_rect(0, 0, 32, 32, 1)
+#     oled.fill_rect(2, 2, 28, 28, 0)
+#     oled.vline(9, 8, 22, 1)
+#     oled.vline(16, 2, 22, 1)
+#     oled.vline(23, 8, 22, 1)
+#     oled.fill_rect(26, 24, 2, 4, 1)
     oled.text('MicroPython', 40, 0, 1)
-    oled.text('-Pico-W-Go-', 40, 12, 1)
-    oled.text('VS Code Mac', 40, 24, 1)
-    oled.text('23 DEC 2022', 40, 36, 1)
+    oled.text('Flight Mode', 40, 12, 1)
+    oled.text('NEO-M8N GPS', 40, 24, 1)
+    oled.text('27 FEB 2023', 40, 36, 1)
     for i in range(0,128,5):
         oled.text("|", i, 50)
         oled.show()
@@ -537,15 +547,17 @@ def async_getgps(gpsModule):
                 try:
                     speed_kmh = float(speed_gpvtg)
                     speed_7seg = float(parts[7])
-                    speed_gauge(int(speed_kmh),1)
+                    if max7219_connected:
+                        speed_gauge(int(speed_kmh),1)
                 except ValueError:
                     speed_7seg = -1
                     speed_kmh = -1
                 if(int(speed_7seg) == 0):
-                    if(time.time() % 2 == 0):
-                        static_text_prox_bottom(gpsTime_nocolon)
-                    else:
-                        static_text_prox_bottom("    ")
+                    if max7219_connected:
+                        if(time.time() % 2 == 0):
+                            static_text_prox_bottom(gpsTime_nocolon)
+                        else:
+                            static_text_prox_bottom("    ")
                         
                     if not car_stopping:
                         stop_time = utime.time()
@@ -558,10 +570,11 @@ def async_getgps(gpsModule):
                     minute = sec // 60
                     sec %= 60
                     
-                    if elapse <= 1:
-                        animate_text_4ch_red('STOP')
-                    else:
-                        disp_stop_elapse(int(minute),int(sec))
+                    if max7219_connected:
+                        if elapse <= 1:
+                            animate_text_4ch_red('STOP')
+                        else:
+                            disp_stop_elapse(int(minute),int(sec))
 
 #                         if(elapse % 2 == 0):
 #                             static_text_prox_top('   ')
@@ -575,10 +588,12 @@ def async_getgps(gpsModule):
                 else:
                     car_stopping = False
                     if not prox_cleared:
-                        prox_disp.fill(0)
-                        prox_disp.show()
+                        if max7219_connected:
+                            prox_disp.fill(0)
+                            prox_disp.show()
                         prox_cleared = True
-                    disp_speed_dot4d(int(speed_7seg))
+                    if max7219_connected:
+                        disp_speed_dot4d(int(speed_7seg))
                 break
      
 
@@ -641,12 +656,14 @@ def async_getgps(gpsModule):
         pixels_fill(RED)
         if not missing_oled:
 #             animate_text_4ch_red('!FIX')
-            scroll_one_way_top("NO GPS FIX : "+str(retry),100)
+            if max7219_connected:
+                scroll_one_way_top("NO GPS FIX : "+str(retry),100)
             oled.fill(0)
             retry += 1
             if(retry >= 5):
-                scroll_one_way_top("FAILED TO GET GPS FIX ",100)
-                scroll_one_way_top("Restarting...",100)
+                if max7219_connected:
+                    scroll_one_way_top("FAILED TO GET GPS FIX ",100)
+                    scroll_one_way_top("Restarting...",100)
                 machine.reset() # added logic 20 Feb 2023
                 
             oled.text("No GPS found", 0, 0)
@@ -655,14 +672,16 @@ def async_getgps(gpsModule):
             write20.text("No Fix:" + str(retry), 0, 30)
             oled.text("NMEA:" + str(nmea_count/60), 0, 50)
             oled.show()
-        if(time.time() % 2 == 0):
-            static_text_prox_bottom(gpsTime_nocolon)
-        else:
-            static_text_prox_bottom("    ")
+        
+        if max7219_connected:
+            if(time.time() % 2 == 0):
+                static_text_prox_bottom(gpsTime_nocolon)
+            else:
+                static_text_prox_bottom("    ")
         TIMEOUT = False
 
 def set_update_1hz():
-    print("set_update_1hz...")
+#     print("set_update_1hz...")
     info_packet = "B5 62 06 08 06 00 E8 03 01 00 01 00 01 39"
     ubx_cfg_rate = "B5 62 06 08 00 00 0E 30"
     info_packet = info_packet + " " + ubx_cfg_rate
@@ -670,9 +689,9 @@ def set_update_1hz():
     hex_lst = []
     for i in range(len(info_packet)):
         hex_lst.append(int("0x"+info_packet[i],16))
-    print(hex_lst)
+#     print(hex_lst)
     utime.sleep_ms(osd_delay)
-    print("Sending command for 1 Hz config")
+#     print("Sending command for 1 Hz config")
     if not missing_oled:
         oled.fill(0)
         oled.text("Change update rate:", 0, 0)
@@ -682,7 +701,7 @@ def set_update_1hz():
     utime.sleep_ms(osd_delay)
 
 def set_update_5hz():
-    print("set_update_5hz...")
+#     print("set_update_5hz...")
     info_packet = "B5 62 06 08 06 00 C8 00 01 00 01 00 DE 6A"
     ubx_cfg_rate = "B5 62 06 08 00 00 0E 30"
     info_packet = info_packet + " " + ubx_cfg_rate
@@ -690,9 +709,9 @@ def set_update_5hz():
     hex_lst = []
     for i in range(len(info_packet)):
         hex_lst.append(int("0x"+info_packet[i],16))
-    print(hex_lst)
+#     print(hex_lst)
     utime.sleep_ms(osd_delay)
-    print("Sending command for 5 Hz config")
+#     print("Sending command for 5 Hz config")
     if not missing_oled:
         oled.fill(0)
         oled.text("Change update rate:", 0, 0)
@@ -702,7 +721,7 @@ def set_update_5hz():
     utime.sleep_ms(osd_delay)
 
 def set_update_10hz():
-    print("set_update_10hz...")
+#     print("set_update_10hz...")
     info_packet = "B5 62 06 08 06 00 64 00 01 00 01 00 7A 12"
     ubx_cfg_rate = "B5 62 06 08 00 00 0E 30"
     info_packet = info_packet + " " + ubx_cfg_rate
@@ -710,9 +729,9 @@ def set_update_10hz():
     hex_lst = []
     for i in range(len(info_packet)):
         hex_lst.append(int("0x"+info_packet[i],16))
-    print(hex_lst)
+#     print(hex_lst)
     utime.sleep_ms(osd_delay)
-    print("Sending command for 10 Hz config")
+#     print("Sending command for 10 Hz config")
     if not missing_oled:
         oled.fill(0)
         oled.text("Change update rate:", 0, 0)
@@ -744,7 +763,7 @@ def change_baud_115200(prev_baud):
         write15.text(str(prev_baud) +"->"+ str(new_baud), 0, 40)
         oled.show()
     utime.sleep_ms(osd_delay)
-    print("Change baud setting to 115200...")
+#     print("Change baud setting to 115200...")
     info_packet = "B5 62 06 00 14 00 01 00 00 00 D0 08 00 00 00 C2 01 00 07 00 03 00 00 00 00 00 C0 7E"
     ubx_cfg_prt = "B5 62 06 00 01 00 01 08 22"
     info_packet = info_packet + " " + ubx_cfg_prt
@@ -752,9 +771,9 @@ def change_baud_115200(prev_baud):
     hex_lst = []
     for i in range(len(info_packet)):
         hex_lst.append(int("0x"+info_packet[i],16))
-    print(hex_lst)
+#     print(hex_lst)
     utime.sleep_ms(osd_delay)
-    print("Sending command for 115200 config")
+#     print("Sending command for 115200 config")
     if not missing_oled:
         oled.fill(0)
         oled.text("Sending command", 0, 0)
@@ -770,7 +789,7 @@ def change_baud_115200(prev_baud):
     gpsModule.write(bytes(hex_lst))
     utime.sleep_ms(osd_delay)
     gpsModule = UART(1, baudrate=new_baud, tx=Pin(4), rx=Pin(5))
-    print(gpsModule)
+#     print(gpsModule)
     utime.sleep_ms(osd_delay)
     if not missing_oled:
         oled.fill(0)
@@ -778,7 +797,7 @@ def change_baud_115200(prev_baud):
         write15.text(str(new_baud)+"->file", 0, 40)
         oled.show()
     file = open("saves.txt", "w")
-    print("Saving 115200 config into memory")
+#     print("Saving 115200 config into memory")
     file.write(str(new_baud))
     file.close()
     utime.sleep_ms(osd_delay)
@@ -804,7 +823,7 @@ def change_baud_9600(prev_baud):
         write15.text(str(prev_baud) +"->"+ str(new_baud), 0, 40)
         oled.show()
         utime.sleep_ms(osd_delay)
-    print("Change baud setting to 9600...")
+#     print("Change baud setting to 9600...")
     info_packet = "B5 62 06 00 14 00 01 00 00 00 D0 08 00 00 80 25 00 00 07 00 03 00 00 00 00 00 A2 B5"
     ubx_cfg_prt = "B5 62 06 00 01 00 01 08 22"
     info_packet = info_packet + " " + ubx_cfg_prt
@@ -812,9 +831,9 @@ def change_baud_9600(prev_baud):
     hex_lst = []
     for i in range(len(info_packet)):
         hex_lst.append(int("0x"+info_packet[i],16))
-    print(hex_lst)
+#     print(hex_lst)
     utime.sleep_ms(osd_delay)
-    print("Sending command for 9600 config")
+#     print("Sending command for 9600 config")
     if not missing_oled:
         oled.fill(0)
         oled.text("Sending command", 0, 0)
@@ -827,7 +846,7 @@ def change_baud_9600(prev_baud):
         write15.text(str(new_baud), 0, 40)
         oled.show()
     gpsModule = UART(1, baudrate=new_baud, tx=Pin(4), rx=Pin(5))
-    print(gpsModule)
+#     print(gpsModule)
     utime.sleep_ms(osd_delay)
     if not missing_oled:
         oled.fill(0)
@@ -835,7 +854,7 @@ def change_baud_9600(prev_baud):
         write15.text(str(new_baud)+"->file", 0, 40)
         oled.show()
     file = open("saves.txt", "w")
-    print("Saving 9600 config into memory")
+#     print("Saving 9600 config into memory")
     file.write(str(new_baud))
     file.close()
     utime.sleep_ms(osd_delay)
@@ -854,9 +873,9 @@ def save_config():
     hex_lst = []
     for i in range(len(info_packet)):
         hex_lst.append(int("0x"+info_packet[i],16))
-    print(hex_lst)
+#     print(hex_lst)
     utime.sleep_ms(osd_delay)
-    print("Writing to flash...")
+#     print("Writing to flash...")
     gpsModule.write(bytes(hex_lst))
     if not missing_oled:
         for i in range(0,128,5):
@@ -928,7 +947,8 @@ def getLidarData(UART0):
             distance   	= bin_ascii[2] + bin_ascii[3] * 256             #Get distance value  
             strength    = bin_ascii[4] + bin_ascii[5] * 256            	#Get Strength value  
             temperature	= (bin_ascii[6] + bin_ascii[7]* 256)/8-256
-            tm.number(int(strength))
+            if tm1637_connected:
+                tm.number(int(strength))
             
             dist = int(distance)
             if(dist == 0 or dist >=700):
@@ -994,7 +1014,8 @@ def get_version(UART0):
 #                 print(hex_stream) # uncomment this to see the HEX data
 #                 print("{}".format(bin_ascii.decode('utf-8')))
                 version = bin_ascii[0:].decode('utf-8')
-                scroll_one_way_bottom(version,scroll_delay)
+                if max7219_connected:
+                    scroll_one_way_bottom(version,scroll_delay)
 
                 lst = []
                 for c in version:
@@ -1007,8 +1028,9 @@ def get_version(UART0):
             else:
                 lidar.write(bytes(info_packet))
     print("Failed to retrieve version")
-    animate_text_4ch_green('NULL')
-    prox_disp.fill(0)
+    if max7219_connected:
+        animate_text_4ch_green('NULL')
+        prox_disp.fill(0)
                 
 def save_settings():
     print("\nSaving setting...")
@@ -1020,7 +1042,8 @@ def lidar_thread():
     global lidar_timeout
     print("starting lidar thread")
     try:
-        scroll_one_way_bottom('GET LiDAR',scroll_delay)
+        if max7219_connected:
+            scroll_one_way_bottom('GET LiDAR',scroll_delay)
         get_version(lidar)
     except:
         # to avoid error when no TFmini-Plus connected while debugging
@@ -1042,12 +1065,12 @@ def main():
 #     _thread.start_new_thread(async_get_distance_thread, ())
     if not missing_oled:
         init_oled()
-    scroll_one_way_top("HELLO",100)
-    utime.sleep(0.5)
-    animate_text_4ch_red('INIT')
-
-    animate_text_4ch_green('AXIA')
-    prox_disp.fill(0)
+    if max7219_connected:
+        scroll_one_way_top("HELLO",100)
+        utime.sleep(0.5)
+        animate_text_4ch_red('INIT')
+        animate_text_4ch_green('AXIA')
+        prox_disp.fill(0)
     if FAULTY_FLASH_MEM:
         prev_baud = load_baudrate()
         change_baud_9600(prev_baud)
@@ -1061,7 +1084,8 @@ def main():
         change_baud_115200(prev_baud)
         set_update_10hz()
         save_config()
-#     _thread.start_new_thread(lidar_thread, ()) # relocated here 5 Oct 2022 | Wednesday
+    if lidar_connected:
+        _thread.start_new_thread(lidar_thread, ()) # relocated here 5 Oct 2022 | Wednesday
     while 1:
         async_getgps(gpsModule)
 
@@ -1069,12 +1093,14 @@ def main():
 try:
     main()
 except OSError:
-    animate_text_4ch_red('WDT2')
+    if max7219_connected:
+        animate_text_4ch_red('WDT2')
     # discovered 14 Oct Friday after 1st Interim session CEEE111
     print("Watchdog reboot | wdt = WDT(timeout=1000)") 
     wdt = WDT(timeout=1000) # reliable restarting 
-#     machine.reset() # hit or miss 
-    animate_text_4ch_green('BOOT')
+#     machine.reset() # hit or miss
+    if max7219_connected:
+        animate_text_4ch_green('BOOT')
     print("Restarting Pico")
     utime.sleep(0.5)
 
@@ -1082,34 +1108,34 @@ except OSError:
 except KeyboardInterrupt:
     print("bye")
     
-except Exception as e:
-    # NEVER PUT WDT HERE
-    # Once it is running the timeout cannot be changed and the WDT cannot be stopped either.
-    # Pico will be stucked in the infinite WDT loop
-    print(e)
-    count = 1
-    print("Captured exception: "+str(e))
-    oled.fill(0)
-    write20.text("EXCEPTION", 0, 0)
-    msg = str(e)
-    if(len(msg) > MAX_CHAR_DISPLAYABLE):
-        oled.text('Exception len:'+str(len(msg)), 0, 20, True)
-        for i in range(0,len(msg)):
-            if(i < MAX_CHAR_DISPLAYABLE):
-                oled.text(msg[0:i], 0, 30, True)
-            else:
-                print("extended length")
-                lengthOfChar = len(msg[0:len(msg)])
-                print(lengthOfChar)
-                if(lengthOfChar == MAX_CHAR_DISPLAYABLE*count):
-                    count += 1
-                oled.text(msg[MAX_CHAR_DISPLAYABLE*count:i], 0, 40, True)
-            oled.show()
-        oled.show()
-    else:
-        oled.text('len:'+str(len(msg)), 0, 20, True)
-        oled.text(msg, 0, 30, True)
-        oled.show()
+# except Exception as e:
+#     # NEVER PUT WDT HERE
+#     # Once it is running the timeout cannot be changed and the WDT cannot be stopped either.
+#     # Pico will be stucked in the infinite WDT loop
+#     print(e)
+#     count = 1
+#     print("Captured exception: "+str(e))
+#     oled.fill(0)
+#     write20.text("EXCEPTION", 0, 0)
+#     msg = str(e)
+#     if(len(msg) > MAX_CHAR_DISPLAYABLE):
+#         oled.text('Exception len:'+str(len(msg)), 0, 20, True)
+#         for i in range(0,len(msg)):
+#             if(i < MAX_CHAR_DISPLAYABLE):
+#                 oled.text(msg[0:i], 0, 30, True)
+#             else:
+#                 print("extended length")
+#                 lengthOfChar = len(msg[0:len(msg)])
+#                 print(lengthOfChar)
+#                 if(lengthOfChar == MAX_CHAR_DISPLAYABLE*count):
+#                     count += 1
+#                 oled.text(msg[MAX_CHAR_DISPLAYABLE*count:i], 0, 40, True)
+#             oled.show()
+#         oled.show()
+#     else:
+#         oled.text('len:'+str(len(msg)), 0, 20, True)
+#         oled.text(msg, 0, 30, True)
+#         oled.show()
 
 
 
