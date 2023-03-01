@@ -117,8 +117,6 @@ for color in COLORS:
 #     color_chase(color, 0.01)
 ##########################################################################
 
-
-
 FAULTY_FLASH_MEM = True # True on Neo-M8N | Maybe False on V.KEL and Neo-M6N
 PERFORM_DEBUG = False
 
@@ -459,13 +457,13 @@ def init_oled():
 #     oled.vline(23, 8, 22, 1)
 #     oled.fill_rect(26, 24, 2, 4, 1)
     oled.text('MicroPython', 40, 0, 1)
-    oled.text('Flight Mode', 40, 12, 1)
+    oled.text('Flight Mode', 40, 8, 1)
     oled.text('NEO-M8N GPS', 40, 24, 1)
-    oled.text('27 FEB 2023', 40, 36, 1)
+    oled.text('01 MAC 2023', 40, 36, 1)
     for i in range(0,128,5):
-        oled.text("|", i, 50)
+        oled.text("/", i, 50)
         oled.show()
-        utime.sleep_ms(1)
+        utime.sleep_ms(100)
     oled.fill(0)
 
 
@@ -520,11 +518,9 @@ def async_getgps(gpsModule):
     while True:
         buff = str(gpsModule.readline())
         parts = buff.split(',')
-
+#         if(parts[0] == "b'$GPGGA" or parts[0] == "b'$GNGGA"): # commented 1 March 2023
         if(parts[0] == "b'$GPGGA" or parts[0] == "b'$GNGGA"):
-            nmea_count = nmea_count + 1
-            
-        if(parts[0] == "b'$GPGGA" or parts[0] == "b'$GNGGA"):
+            nmea_count = nmea_count + 1 # repositioned here 1 March 2023
             if(parts[1] and len(parts[1])==9):
                 if "$GNRMC" in parts[1] or "$GPRMC" in parts[1]:
                     pass
@@ -612,8 +608,8 @@ def async_getgps(gpsModule):
                     if (parts[5] == 'W'):
                         longitude = -longitude
                     satellites = parts[7]
-                    altitude_m = float(parts[9])
-                    altitude_ft = altitude_m * 3.28084
+                    altitude_m = int(float(parts[9]))
+                    altitude_ft = int(altitude_m * 3.28084)
                 
                 try:
                     hour = int(parts[1][0:2])
@@ -632,20 +628,29 @@ def async_getgps(gpsModule):
             TIMEOUT = True
             break
         utime.sleep_ms(int(UPDATE_RATE_MS)) # last line of while True loop
+        
+    display_mode = 1
 
     if(FIX_STATUS == True):
         rgb_off()
         if not missing_oled:
             oled.fill(0)
-            if(time.time() % 2 == 0):
-                oled.text("Lat: "+str(latitude), 0, 0) # TypeError: can't convert 'NoneType' object to str implicitly = Quick fix explicit conversion to str()
-                oled.text("Lng: "+str(longitude), 0, 10) # TypeError: can't convert 'NoneType' object to str implicitly = Quick fix explicit conversion to str()
+            if display_mode == 0:
+                if(time.time() % 2 == 0):
+                    oled.text("Lat: "+str(latitude), 0, 0) # TypeError: can't convert 'NoneType' object to str implicitly = Quick fix explicit conversion to str()
+                    oled.text("Lng: "+str(longitude), 0, 8) # TypeError: can't convert 'NoneType' object to str implicitly = Quick fix explicit conversion to str()
+                else:
+                    oled.text("Alt: "+str(altitude_m)+" m", 0, 0)
+                    oled.text("Alt: "+str(altitude_ft)+" ft", 0, 8)
             else:
-                oled.text("A_m: "+str(altitude_m), 0, 0)
-                oled.text("Aft: "+str(altitude_ft), 0, 10)
+                oled.text(str(latitude[0:6])+" "+str(longitude[0:9]), 0, 0)
+#                 speed_kmh = 840.50
+#                 altitude_m = 9144
+#                 altitude_ft = 30000
+                oled.text(str(altitude_m)+"m / "+str(altitude_ft)+"ft", 0, 8)
             oled.text("Sat: "+satellites+ "| V:"+ speed_knot, 0, 20)
             oled.text("GMT: "+GPStime, 0, 30)
-            write20.text("VK: "+str(int(speed_kmh)) + "km/h", 0, 40)
+            write20.text("VK: "+str(int(speed_kmh)) + " km/h", 0, 40)
             oled.show()
      
         FIX_STATUS = False
@@ -660,7 +665,7 @@ def async_getgps(gpsModule):
                 scroll_one_way_top("NO GPS FIX : "+str(retry),100)
             oled.fill(0)
             retry += 1
-            if(retry >= 5):
+            if(retry >= 10):
                 if max7219_connected:
                     scroll_one_way_top("FAILED TO GET GPS FIX ",100)
                     scroll_one_way_top("Restarting...",100)
@@ -1108,34 +1113,35 @@ except OSError:
 except KeyboardInterrupt:
     print("bye")
     
-# except Exception as e:
-#     # NEVER PUT WDT HERE
-#     # Once it is running the timeout cannot be changed and the WDT cannot be stopped either.
-#     # Pico will be stucked in the infinite WDT loop
-#     print(e)
-#     count = 1
-#     print("Captured exception: "+str(e))
-#     oled.fill(0)
-#     write20.text("EXCEPTION", 0, 0)
-#     msg = str(e)
-#     if(len(msg) > MAX_CHAR_DISPLAYABLE):
-#         oled.text('Exception len:'+str(len(msg)), 0, 20, True)
-#         for i in range(0,len(msg)):
-#             if(i < MAX_CHAR_DISPLAYABLE):
-#                 oled.text(msg[0:i], 0, 30, True)
-#             else:
-#                 print("extended length")
-#                 lengthOfChar = len(msg[0:len(msg)])
-#                 print(lengthOfChar)
-#                 if(lengthOfChar == MAX_CHAR_DISPLAYABLE*count):
-#                     count += 1
-#                 oled.text(msg[MAX_CHAR_DISPLAYABLE*count:i], 0, 40, True)
-#             oled.show()
-#         oled.show()
-#     else:
-#         oled.text('len:'+str(len(msg)), 0, 20, True)
-#         oled.text(msg, 0, 30, True)
-#         oled.show()
+except Exception as e:
+    # NEVER PUT WDT HERE
+    # Once it is running the timeout cannot be changed and the WDT cannot be stopped either.
+    # Pico will be stucked in the infinite WDT loop
+    print(e)
+    count = 1
+    print("Captured exception: "+str(e))
+    oled.fill(0)
+    write20.text("EXCEPTION", 0, 0)
+    msg = str(e)
+    if(len(msg) > MAX_CHAR_DISPLAYABLE):
+        oled.text('Exception len:'+str(len(msg)), 0, 20, True)
+        for i in range(0,len(msg)):
+            if(i < MAX_CHAR_DISPLAYABLE):
+                oled.text(msg[0:i], 0, 30, True)
+            else:
+                print("extended length")
+                lengthOfChar = len(msg[0:len(msg)])
+                print(lengthOfChar)
+                if(lengthOfChar == MAX_CHAR_DISPLAYABLE*count):
+                    count += 1
+                oled.text(msg[MAX_CHAR_DISPLAYABLE*count:i], 0, 40, True)
+            oled.show()
+        oled.show()
+    else:
+        oled.text('len:'+str(len(msg)), 0, 20, True)
+        oled.text(msg, 0, 30, True)
+        oled.show()
+
 
 
 
