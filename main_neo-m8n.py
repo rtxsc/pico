@@ -3,6 +3,7 @@
 # Speed Gauge Addition 3 Feb 2023 Friday
 # 19:54:00
 # edited for Airplane Speed Testing 27 Feb 2023
+# added machine.reset() at Exception 8 Mar 2023
 
 from machine import Pin, UART, I2C, SPI, WDT
 # from ssd1306 import SSD1306_I2C # deleted 27 Feb 2023
@@ -19,7 +20,7 @@ import _thread
 import rp2, array
 
 tm1637_connected = False
-max7219_connected = False
+max7219_connected = True
 hcsr04_connected = False
 lidar_connected = False
 
@@ -463,7 +464,7 @@ def init_oled():
     for i in range(0,128,5):
         oled.text("/", i, 50)
         oled.show()
-        utime.sleep_ms(100)
+        utime.sleep_ms(10)
     oled.fill(0)
 
 
@@ -514,7 +515,7 @@ def async_getgps(gpsModule):
         NAV_FREQ_HZ = 1 # for baud 9600
     else:
         NAV_FREQ_HZ = 10 # for baud 115200
-    UPDATE_RATE_MS = 1000/(NAV_FREQ_HZ*50)
+    UPDATE_RATE_MS = 1000/(NAV_FREQ_HZ*100) # NAV_FREQ_HZ*50 
     while True:
         buff = str(gpsModule.readline())
         parts = buff.split(',')
@@ -608,8 +609,12 @@ def async_getgps(gpsModule):
                     if (parts[5] == 'W'):
                         longitude = -longitude
                     satellites = parts[7]
-                    altitude_m = int(float(parts[9]))
-                    altitude_ft = int(altitude_m * 3.28084)
+                    try:
+                        altitude_m = int(float(parts[9]))
+                        altitude_ft = int(altitude_m * 3.28084)
+                    except:
+                        print("Unable to parse parts[9] for the altitude")
+                        pass
                 
                 try:
                     hour = int(parts[1][0:2])
@@ -659,18 +664,8 @@ def async_getgps(gpsModule):
     if(TIMEOUT == True): # timeout reached due to no fix
         red_on()
         pixels_fill(RED)
-        if not missing_oled:
-#             animate_text_4ch_red('!FIX')
-            if max7219_connected:
-                scroll_one_way_top("NO GPS FIX : "+str(retry),100)
+        if not missing_oled:      
             oled.fill(0)
-            retry += 1
-            if(retry >= 10):
-                if max7219_connected:
-                    scroll_one_way_top("FAILED TO GET GPS FIX ",100)
-                    scroll_one_way_top("Restarting...",100)
-                machine.reset() # added logic 20 Feb 2023
-                
             oled.text("No GPS found", 0, 0)
             oled.text("Time:"+ GPStime, 0, 10)
             oled.text("ValueErr:"+str(valueError), 0, 20)
@@ -679,10 +674,26 @@ def async_getgps(gpsModule):
             oled.show()
         
         if max7219_connected:
+            scroll_one_way_top("NO GPS FIX : "+str(retry),100)
             if(time.time() % 2 == 0):
                 static_text_prox_bottom(gpsTime_nocolon)
             else:
                 static_text_prox_bottom("    ")
+            
+        retry += 1
+        if(retry >= 10):
+            if not missing_oled:      
+                oled.fill(0)
+                oled.text("GPS Failed", 0, 0)
+                oled.text("Restarting", 0, 10)
+                oled.show()
+                utime.sleep_ms(1000)
+            if max7219_connected:
+                scroll_one_way_top("FAILED TO GET GPS FIX ",100)
+                scroll_one_way_top("Restarting...",100)
+            machine.reset() # added logic 20 Feb 2023
+        
+   
         TIMEOUT = False
 
 def set_update_1hz():
@@ -744,7 +755,131 @@ def set_update_10hz():
         oled.show()
     gpsModule.write(bytes(hex_lst))
     utime.sleep_ms(osd_delay)
-    
+
+def change_baud_921600(prev_baud):
+    global gpsModule, new_baud
+    new_baud=921600
+    if prev_baud != new_baud and not missing_oled:
+        oled.fill(0)
+        oled.text("baud changing", 0, 20)
+        oled.show()
+        utime.sleep_ms(osd_delay)
+        
+    if not missing_oled:
+        oled.fill(0)
+        oled.text("Prev baud:", 0, 0)
+        write15.text(str(prev_baud), 0, 10)
+        oled.text("New baud:", 0, 30)
+        write15.text(str(new_baud), 0, 40)
+        oled.show()
+        utime.sleep_ms(osd_delay)
+    if not missing_oled:
+        oled.fill(0)
+        oled.text("Change baud to:", 0, 0)
+        write15.text(str(prev_baud) +"->"+ str(new_baud), 0, 40)
+        oled.show()
+    utime.sleep_ms(osd_delay)
+    print("Change baud setting to 921600...")
+    info_packet = "B5 62 06 00 14 00 01 00 00 00 D0 08 00 00 00 10 0E 00 07 00 03 00 00 00 00 00 1B 5A"
+    ubx_cfg_prt = "B5 62 06 00 01 00 01 08 22"
+    info_packet = info_packet + " " + ubx_cfg_prt
+    info_packet = info_packet.split()
+    hex_lst = []
+    for i in range(len(info_packet)):
+        hex_lst.append(int("0x"+info_packet[i],16))
+#     print(hex_lst)
+    utime.sleep_ms(osd_delay)
+#     print("Sending command for 921600 config")
+    if not missing_oled:
+        oled.fill(0)
+        oled.text("Sending command", 0, 0)
+        write15.text(str(new_baud), 0, 40)
+        oled.show()
+    gpsModule.write(bytes(hex_lst))
+    utime.sleep_ms(osd_delay)
+    if not missing_oled:
+        oled.fill(0)
+        oled.text("Reinitialize UART1", 0, 0)
+        write15.text(str(new_baud), 0, 40)
+        oled.show()
+    gpsModule.write(bytes(hex_lst))
+    utime.sleep_ms(osd_delay)
+    gpsModule = UART(1, baudrate=new_baud, tx=Pin(4), rx=Pin(5))
+#     print(gpsModule)
+    utime.sleep_ms(osd_delay)
+    if not missing_oled:
+        oled.fill(0)
+        oled.text("Saving to file", 0, 0)
+        write15.text(str(new_baud)+"->file", 0, 40)
+        oled.show()
+    file = open("saves.txt", "w")
+    print("Saving 921600 config into memory")
+    file.write(str(new_baud))
+    file.close()
+    utime.sleep_ms(osd_delay)
+
+def change_baud_460800(prev_baud):
+    global gpsModule, new_baud
+    new_baud=460800
+    if prev_baud != new_baud and not missing_oled:
+        oled.fill(0)
+        oled.text("baud changing", 0, 20)
+        oled.show()
+        utime.sleep_ms(osd_delay)
+        
+    if not missing_oled:
+        oled.fill(0)
+        oled.text("Prev baud:", 0, 0)
+        write15.text(str(prev_baud), 0, 10)
+        oled.text("New baud:", 0, 30)
+        write15.text(str(new_baud), 0, 40)
+        oled.show()
+        utime.sleep_ms(osd_delay)
+    if not missing_oled:
+        oled.fill(0)
+        oled.text("Change baud to:", 0, 0)
+        write15.text(str(prev_baud) +"->"+ str(new_baud), 0, 40)
+        oled.show()
+    utime.sleep_ms(osd_delay)
+    print("Change baud setting to 460800...")
+    info_packet = "B5 62 06 00 14 00 01 00 00 00 D0 08 00 00 00 08 07 00 07 00 03 00 00 00 00 00 0C BC"
+    ubx_cfg_prt = "B5 62 06 00 01 00 01 08 22"
+    info_packet = info_packet + " " + ubx_cfg_prt
+    info_packet = info_packet.split()
+    hex_lst = []
+    for i in range(len(info_packet)):
+        hex_lst.append(int("0x"+info_packet[i],16))
+#     print(hex_lst)
+    utime.sleep_ms(osd_delay)
+#     print("Sending command for 460800 config")
+    if not missing_oled:
+        oled.fill(0)
+        oled.text("Sending command", 0, 0)
+        write15.text(str(new_baud), 0, 40)
+        oled.show()
+    gpsModule.write(bytes(hex_lst))
+    utime.sleep_ms(osd_delay)
+    if not missing_oled:
+        oled.fill(0)
+        oled.text("Reinitialize UART1", 0, 0)
+        write15.text(str(new_baud), 0, 40)
+        oled.show()
+    gpsModule.write(bytes(hex_lst))
+    utime.sleep_ms(osd_delay)
+    gpsModule = UART(1, baudrate=new_baud, tx=Pin(4), rx=Pin(5))
+#     print(gpsModule)
+    utime.sleep_ms(osd_delay)
+    if not missing_oled:
+        oled.fill(0)
+        oled.text("Saving to file", 0, 0)
+        write15.text(str(new_baud)+"->file", 0, 40)
+        oled.show()
+    file = open("saves.txt", "w")
+    print("Saving 460800 config into memory")
+    file.write(str(new_baud))
+    file.close()
+    utime.sleep_ms(osd_delay)
+
 def change_baud_115200(prev_baud):
     global gpsModule, new_baud
     new_baud=115200
@@ -768,7 +903,7 @@ def change_baud_115200(prev_baud):
         write15.text(str(prev_baud) +"->"+ str(new_baud), 0, 40)
         oled.show()
     utime.sleep_ms(osd_delay)
-#     print("Change baud setting to 115200...")
+    print("Change baud setting to 115200...")
     info_packet = "B5 62 06 00 14 00 01 00 00 00 D0 08 00 00 00 C2 01 00 07 00 03 00 00 00 00 00 C0 7E"
     ubx_cfg_prt = "B5 62 06 00 01 00 01 08 22"
     info_packet = info_packet + " " + ubx_cfg_prt
@@ -802,7 +937,7 @@ def change_baud_115200(prev_baud):
         write15.text(str(new_baud)+"->file", 0, 40)
         oled.show()
     file = open("saves.txt", "w")
-#     print("Saving 115200 config into memory")
+    print("Saving 115200 config into memory")
     file.write(str(new_baud))
     file.close()
     utime.sleep_ms(osd_delay)
@@ -828,7 +963,7 @@ def change_baud_9600(prev_baud):
         write15.text(str(prev_baud) +"->"+ str(new_baud), 0, 40)
         oled.show()
         utime.sleep_ms(osd_delay)
-#     print("Change baud setting to 9600...")
+    print("Change baud setting to 9600...")
     info_packet = "B5 62 06 00 14 00 01 00 00 00 D0 08 00 00 80 25 00 00 07 00 03 00 00 00 00 00 A2 B5"
     ubx_cfg_prt = "B5 62 06 00 01 00 01 08 22"
     info_packet = info_packet + " " + ubx_cfg_prt
@@ -859,7 +994,7 @@ def change_baud_9600(prev_baud):
         write15.text(str(new_baud)+"->file", 0, 40)
         oled.show()
     file = open("saves.txt", "w")
-#     print("Saving 9600 config into memory")
+    print("Saving 9600 config into memory")
     file.write(str(new_baud))
     file.close()
     utime.sleep_ms(osd_delay)
@@ -1081,7 +1216,11 @@ def main():
         change_baud_9600(prev_baud)
         set_update_1hz()
         prev_baud = load_baudrate()
-        change_baud_115200(prev_baud)
+        change_baud_115200(prev_baud) 
+        prev_baud = load_baudrate()
+        change_baud_460800(prev_baud)
+        prev_baud = load_baudrate()
+        change_baud_921600(prev_baud)
         set_update_10hz()
         save_config()
     else:
@@ -1141,6 +1280,8 @@ except Exception as e:
         oled.text('len:'+str(len(msg)), 0, 20, True)
         oled.text(msg, 0, 30, True)
         oled.show()
+    machine.reset() # added 8 Mar 2023
+
 
 
 
